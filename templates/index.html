@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Einfache/Leichte Sprache Übersetzer</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>Übersetzer für Leichte/Einfache Sprache</h1>
+      <div class="mode-switch">
+        <button id="modeLeichte" class="mode-btn active" data-mode="leichte">Leichte Sprache</button>
+        <button id="modeEinfache" class="mode-btn" data-mode="einfache">Einfache Sprache</button>
+        <button id="editPromptBtn" class="secondary">System‑Prompt ändern</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <label for="inputText">Eingabetext</label>
+        <textarea id="inputText" rows="10" placeholder="Text hier eingeben …"></textarea>
+        <div class="actions">
+          <button id="translateBtn" class="primary">Übersetzen</button>
+          <label class="checkbox">
+            <input type="checkbox" id="streaming" checked>
+            <span>Streaming anzeigen</span>
+          </label>
+        </div>
+        <div id="loading" class="loading" style="display:none;">Übersetze …</div>
+        <div id="error" class="error" style="display:none;"></div>
+      </section>
+
+      <section id="outputSection" class="card">
+        <div class="output-header">
+          <h2>Ergebnis</h2>
+          <button id="copyOutputBtn" class="secondary">Kopieren</button>
+        </div>
+        <div id="outputText" class="output"></div>
+      </section>
+    </main>
+
+    <footer>
+      <small>Bereitgestellt von eulenai.de</small>
+    </footer>
+  </div>
+
+  <!-- Prompt Editor Modal -->
+  <div id="promptModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h3>System‑Prompt bearbeiten (<span id="promptTypeLabel">Leichte Sprache</span>)</h3>
+      <textarea id="promptEditor" rows="14"></textarea>
+      <div class="modal-actions">
+        <button id="savePromptBtn" class="primary">Speichern</button>
+        <button id="cancelPromptBtn" class="secondary">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const translateBtn = document.getElementById('translateBtn');
+    const streamingChk = document.getElementById('streaming');
+    const inputText = document.getElementById('inputText');
+    const outputText = document.getElementById('outputText');
+    const outputSection = document.getElementById('outputSection');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const copyOutputBtn = document.getElementById('copyOutputBtn');
+    const modeLeichteBtn = document.getElementById('modeLeichte');
+    const modeEinfacheBtn = document.getElementById('modeEinfache');
+    const editPromptBtn = document.getElementById('editPromptBtn');
+    const promptModal = document.getElementById('promptModal');
+    const promptEditor = document.getElementById('promptEditor');
+    const promptTypeLabel = document.getElementById('promptTypeLabel');
+
+    let promptType = 'leichte';
+
+    modeLeichteBtn.onclick = () => setMode('leichte');
+    modeEinfacheBtn.onclick = () => setMode('einfache');
+
+    function setMode(mode) {
+      promptType = mode;
+      modeLeichteBtn.classList.toggle('active', mode === 'leichte');
+      modeEinfacheBtn.classList.toggle('active', mode === 'einfache');
+      promptTypeLabel.textContent = mode === 'leichte' ? 'Leichte Sprache' : 'Einfache Sprache';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    translateBtn.onclick = async () => {
+      errorDiv.style.display = 'none';
+      outputText.textContent = '';
+      let rawText = '';
+      const text = inputText.value.trim();
+      if (!text) { errorDiv.textContent = 'Bitte Text eingeben.'; errorDiv.style.display = 'block'; return; }
+      translateBtn.disabled = true; loading.style.display = 'block';
+
+      if (streamingChk.checked) {
+        const r = await fetch('/paraphrase_stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, promptType })
+        });
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n'); buffer = events.pop() || '';
+          for (const ev of events) {
+            const m = ev.match(/^data:\s*(.*)$/s); if (!m) continue;
+            const payload = m[1];
+
+            if (payload === '[DONE]') {
+              // light punctuation normalization; keep original newlines
+              let finalTxt = rawText
+                .replace(/([\.!?])([A-Za-zÀ-ÿ])/g, '$1 $2')
+                .replace(/([,:;])([A-Za-zÀ-ÿ])/g, '$1 $2');
+              outputText.textContent = finalTxt;
+              translateBtn.disabled = false; loading.style.display = 'none';
+              break;
+            }
+            if (payload.startsWith('ERROR:')) {
+              errorDiv.textContent = payload; errorDiv.style.display = 'block';
+              translateBtn.disabled = false; loading.style.display = 'none';
+              break;
+            }
+
+            // Server sends the full accumulated text as a JSON string
+            try {
+              const full = JSON.parse(payload);
+              rawText = full;
+            } catch {
+              // Fallback if server sent plain text
+              rawText = payload;
+            }
+            outputText.textContent = rawText; // preserves spaces/newlines (CSS: white-space: pre-wrap)
+            outputSection.scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+      } else {
+        const r = await fetch('/paraphrase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, promptType })
+        });
+        const data = await r.json();
+        if (!r.ok || data.error) {
+          errorDiv.textContent = data.error || 'Fehler';
+          errorDiv.style.display = 'block';
+        } else {
+          outputText.textContent = data.result || '';
+        }
+        translateBtn.disabled = false; loading.style.display = 'none';
+      }
+    };
+
+    copyOutputBtn.onclick = async () => {
+      const txt = outputText.innerText;
+      await navigator.clipboard.writeText(txt);
+      copyOutputBtn.textContent = 'Kopiert!';
+      setTimeout(() => copyOutputBtn.textContent = 'Kopieren', 1500);
+    };
+
+    editPromptBtn.onclick = async () => {
+      const r = await fetch('/system_prompt?type=' + promptType);
+      const data = await r.json();
+      promptEditor.value = data.prompt || '';
+      promptTypeLabel.textContent = promptType === 'leichte' ? 'Leichte Sprache' : 'Einfache Sprache';
+      promptModal.style.display = 'block';
+    };
+    document.getElementById('cancelPromptBtn').onclick = () => { promptModal.style.display = 'none'; };
+    document.getElementById('savePromptBtn').onclick = async () => {
+      const prompt = promptEditor.value;
+      const r = await fetch('/system_prompt', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ type: promptType, prompt })
+      });
+      if (r.ok) { promptModal.style.display = 'none'; } else {
+        const err = await r.json().catch(()=>({error:'Fehler'}));
+        alert(err.error || 'Fehler beim Speichern.');
+      }
+    };
+  </script>
+</body>
+</html>
