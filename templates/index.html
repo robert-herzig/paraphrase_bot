@@ -3,43 +3,68 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Einfache/Leichte Sprache Übersetzer</title>
+  <title>Einfache/Leichte Sprache Assistent</title>
   <link rel="stylesheet" href="./static/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="container">
     <header class="hero">
-      <h1>Übersetzer für Leichte/Einfache Sprache</h1>
-      <div class="mode-switch">
-        <button id="modeLeichte" class="mode-btn active" data-mode="leichte">Leichte Sprache</button>
-        <button id="modeEinfache" class="mode-btn" data-mode="einfache">Einfache Sprache</button>
-        <button id="editPromptBtn" class="secondary">System‑Prompt ändern</button>
+      <div class="hero-top">
+        <h1>Leichte Sprache & Notizen-Assistent</h1>
+        <button id="settingsBtn" class="icon-btn" aria-label="Einstellungen">⚙</button>
+      </div>
+      <div class="tab-bar primary-tabs">
+        <button class="tab-btn active" data-tab="leichte">Leichte Sprache</button>
+        <button class="tab-btn" data-tab="einfache">Einfache Sprache</button>
+        <button class="tab-btn" data-tab="cleanup">Notizen aufräumen</button>
       </div>
     </header>
 
     <main>
-      <section class="card">
-        <label for="inputText">Eingabetext</label>
-        <textarea id="inputText" rows="10" placeholder="Text hier eingeben …"></textarea>
-        <div class="actions">
-          <button id="translateBtn" class="primary">Übersetzen</button>
-          <label class="checkbox">
-            <input type="checkbox" id="streaming" checked>
-            <span>Streaming anzeigen</span>
-          </label>
-        </div>
-        <div id="loading" class="loading" style="display:none;">Übersetze …</div>
-        <div id="error" class="error" style="display:none;"></div>
-      </section>
+      <div id="translatePanel" class="tab-panel active">
+        <section class="card">
+          <label id="inputLabel" for="inputText">Eingabetext (Leichte Sprache)</label>
+          <textarea id="inputText" rows="10" placeholder="Text hier eingeben …"></textarea>
+          <div class="actions">
+            <button id="translateBtn" class="primary">Übersetzen</button>
+            <label class="checkbox">
+              <input type="checkbox" id="streaming" checked>
+              <span>Streaming anzeigen</span>
+            </label>
+          </div>
+          <div id="loading" class="loading" style="display:none;">Übersetze …</div>
+          <div id="error" class="error" style="display:none;"></div>
+        </section>
 
-      <section id="outputSection" class="card">
-        <div class="output-header">
-          <h2>Ergebnis</h2>
-          <button id="copyOutputBtn" class="secondary">Kopieren</button>
-        </div>
-        <div id="outputText" class="output"></div>
-      </section>
+        <section id="outputSection" class="card">
+          <div class="output-header">
+            <h2 id="outputHeading">Ergebnis (Leichte Sprache)</h2>
+            <button id="copyOutputBtn" class="secondary">Kopieren</button>
+          </div>
+          <div id="outputText" class="output"></div>
+        </section>
+      </div>
+
+      <div id="cleanupPanel" class="tab-panel">
+        <section class="card">
+          <label for="notesInput">Schnelle Notizen</label>
+          <textarea id="notesInput" rows="10" placeholder="Schreibe hier deine Stichworte, Ideen oder chaotischen Sätze …"></textarea>
+          <p class="helper-text">Wir verwandeln deine Skizze in gut lesbares Deutsch mit korrekter Rechtschreibung und Zeichensetzung.</p>
+          <div class="actions">
+            <button id="cleanupBtn" class="primary">Bereinigen</button>
+          </div>
+          <div id="cleanupLoading" class="loading" style="display:none;">Formuliere sauber …</div>
+          <div id="cleanupError" class="error" style="display:none;"></div>
+        </section>
+
+        <section class="card">
+          <div class="output-header">
+            <h2>Überarbeiteter Text</h2>
+            <button id="copyCleanupBtn" class="secondary">Kopieren</button>
+          </div>
+          <div id="cleanupOutput" class="output"></div>
+        </section>
+      </div>
     </main>
 
     <footer>
@@ -47,10 +72,14 @@
     </footer>
   </div>
 
-  <!-- Prompt Editor Modal -->
   <div id="promptModal" class="modal" style="display:none;">
     <div class="modal-content">
-      <h3>System‑Prompt bearbeiten (<span id="promptTypeLabel">Leichte Sprache</span>)</h3>
+      <h3>System‑Prompts anpassen (<span id="promptTypeLabel">Leichte Sprache</span>)</h3>
+      <div class="prompt-option-group">
+        <button class="prompt-option active" data-prompt-option="leichte">Leichte Sprache</button>
+        <button class="prompt-option" data-prompt-option="einfache">Einfache Sprache</button>
+        <button class="prompt-option" data-prompt-option="cleanup">Notizen aufräumen</button>
+      </div>
       <textarea id="promptEditor" rows="14"></textarea>
       <div class="modal-actions">
         <button id="savePromptBtn" class="primary">Speichern</button>
@@ -60,6 +89,11 @@
   </div>
 
   <script>
+    const BASE_PATH = (() => {
+      const p = window.location.pathname;
+      return p.startsWith('/leichte-sprache') ? '/leichte-sprache' : '';
+    })();
+
     const translateBtn = document.getElementById('translateBtn');
     const streamingChk = document.getElementById('streaming');
     const inputText = document.getElementById('inputText');
@@ -68,43 +102,76 @@
     const loading = document.getElementById('loading');
     const errorDiv = document.getElementById('error');
     const copyOutputBtn = document.getElementById('copyOutputBtn');
-    const modeLeichteBtn = document.getElementById('modeLeichte');
-    const modeEinfacheBtn = document.getElementById('modeEinfache');
-    const editPromptBtn = document.getElementById('editPromptBtn');
     const promptModal = document.getElementById('promptModal');
     const promptEditor = document.getElementById('promptEditor');
     const promptTypeLabel = document.getElementById('promptTypeLabel');
+    const notesInput = document.getElementById('notesInput');
+    const cleanupBtn = document.getElementById('cleanupBtn');
+    const cleanupOutput = document.getElementById('cleanupOutput');
+    const cleanupLoading = document.getElementById('cleanupLoading');
+    const cleanupError = document.getElementById('cleanupError');
+    const copyCleanupBtn = document.getElementById('copyCleanupBtn');
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const translatePanel = document.getElementById('translatePanel');
+    const cleanupPanel = document.getElementById('cleanupPanel');
+    const inputLabel = document.getElementById('inputLabel');
+    const outputHeading = document.getElementById('outputHeading');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const promptOptionButtons = document.querySelectorAll('[data-prompt-option]');
 
     let promptType = 'leichte';
+    let currentTab = 'leichte';
+    let settingsPromptType = 'leichte';
 
-    modeLeichteBtn.onclick = () => setMode('leichte');
-    modeEinfacheBtn.onclick = () => setMode('einfache');
+    tabButtons.forEach(btn => btn.addEventListener('click', () => setPrimaryTab(btn.dataset.tab)));
 
-    function setMode(mode) {
-      promptType = mode;
-      modeLeichteBtn.classList.toggle('active', mode === 'leichte');
-      modeEinfacheBtn.classList.toggle('active', mode === 'einfache');
-      promptTypeLabel.textContent = mode === 'leichte' ? 'Leichte Sprache' : 'Einfache Sprache';
+    function labelForMode(mode) {
+      return mode === 'einfache' ? 'Einfache Sprache' : 'Leichte Sprache';
     }
 
-    function escapeHtml(s) {
-      return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    function promptLabel(type) {
+      if (type === 'cleanup') return 'Notizen aufräumen';
+      return labelForMode(type);
     }
+
+    function setPrimaryTab(tab) {
+      currentTab = tab;
+      tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+      if (tab === 'cleanup') {
+        translatePanel.classList.remove('active');
+        cleanupPanel.classList.add('active');
+      } else {
+        promptType = tab;
+        translatePanel.classList.add('active');
+        cleanupPanel.classList.remove('active');
+        updateModeLabels();
+      }
+    }
+
+    function updateModeLabels() {
+      const label = labelForMode(promptType);
+      inputLabel.textContent = `Eingabetext (${label})`;
+      outputHeading.textContent = `Ergebnis (${label})`;
+    }
+
+    setPrimaryTab('leichte');
 
     translateBtn.onclick = async () => {
       errorDiv.style.display = 'none';
       outputText.textContent = '';
       let rawText = '';
       const text = inputText.value.trim();
-      if (!text) { errorDiv.textContent = 'Bitte Text eingeben.'; errorDiv.style.display = 'block'; return; }
-      translateBtn.disabled = true; loading.style.display = 'block';
+      if (!text) {
+        errorDiv.textContent = 'Bitte Text eingeben.';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      translateBtn.disabled = true;
+      loading.style.display = 'block';
 
       if (streamingChk.checked) {
-        const r = await fetch('/paraphrase_stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, promptType })
-        });
+        const qs = new URLSearchParams({ text, promptType }).toString();
+        const r = await fetch(BASE_PATH + '/paraphrase_stream?' + qs);
         const reader = r.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -112,40 +179,41 @@
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n'); buffer = events.pop() || '';
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
           for (const ev of events) {
-            const m = ev.match(/^data:\s*(.*)$/s); if (!m) continue;
+            const m = ev.match(/^data:\s*(.*)$/s);
+            if (!m) continue;
             const payload = m[1];
 
             if (payload === '[DONE]') {
-              // light punctuation normalization; keep original newlines
-              let finalTxt = rawText
-                .replace(/([\.!?])([A-Za-zÀ-ÿ])/g, '$1 $2')
+              const finalTxt = rawText
+                .replace(/([\.\!?])([A-Za-zÀ-ÿ])/g, '$1 $2')
                 .replace(/([,:;])([A-Za-zÀ-ÿ])/g, '$1 $2');
               outputText.textContent = finalTxt;
-              translateBtn.disabled = false; loading.style.display = 'none';
-              break;
+              translateBtn.disabled = false;
+              loading.style.display = 'none';
+              return;
             }
             if (payload.startsWith('ERROR:')) {
-              errorDiv.textContent = payload; errorDiv.style.display = 'block';
-              translateBtn.disabled = false; loading.style.display = 'none';
-              break;
+              errorDiv.textContent = payload;
+              errorDiv.style.display = 'block';
+              translateBtn.disabled = false;
+              loading.style.display = 'none';
+              return;
             }
 
-            // Server sends the full accumulated text as a JSON string
             try {
-              const full = JSON.parse(payload);
-              rawText = full;
+              rawText = JSON.parse(payload);
             } catch {
-              // Fallback if server sent plain text
               rawText = payload;
             }
-            outputText.textContent = rawText; // preserves spaces/newlines (CSS: white-space: pre-wrap)
+            outputText.textContent = rawText;
             outputSection.scrollIntoView({ behavior: 'smooth' });
           }
         }
       } else {
-        const r = await fetch('/paraphrase', {
+        const r = await fetch(BASE_PATH + '/paraphrase', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, promptType })
@@ -157,36 +225,103 @@
         } else {
           outputText.textContent = data.result || '';
         }
-        translateBtn.disabled = false; loading.style.display = 'none';
+        translateBtn.disabled = false;
+        loading.style.display = 'none';
       }
     };
 
     copyOutputBtn.onclick = async () => {
       const txt = outputText.innerText;
+      if (!txt.trim()) return;
       await navigator.clipboard.writeText(txt);
       copyOutputBtn.textContent = 'Kopiert!';
-      setTimeout(() => copyOutputBtn.textContent = 'Kopieren', 1500);
+      setTimeout(() => (copyOutputBtn.textContent = 'Kopieren'), 1500);
     };
 
-    editPromptBtn.onclick = async () => {
-      const r = await fetch('/system_prompt?type=' + promptType);
-      const data = await r.json();
-      promptEditor.value = data.prompt || '';
-      promptTypeLabel.textContent = promptType === 'leichte' ? 'Leichte Sprache' : 'Einfache Sprache';
-      promptModal.style.display = 'block';
+    cleanupBtn.onclick = async () => {
+      cleanupError.style.display = 'none';
+      cleanupOutput.textContent = '';
+      const text = notesInput.value.trim();
+      if (!text) {
+        cleanupError.textContent = 'Bitte zuerst deine Notizen eingeben.';
+        cleanupError.style.display = 'block';
+        return;
+      }
+      cleanupBtn.disabled = true;
+      cleanupLoading.style.display = 'block';
+      try {
+        const r = await fetch(BASE_PATH + '/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) {
+          cleanupError.textContent = (data && data.error) || 'Fehler beim Bereinigen.';
+          cleanupError.style.display = 'block';
+        } else {
+          cleanupOutput.textContent = data.result || '';
+        }
+      } catch (err) {
+        cleanupError.textContent = err && err.message ? err.message : 'Unbekannter Fehler.';
+        cleanupError.style.display = 'block';
+      } finally {
+        cleanupBtn.disabled = false;
+        cleanupLoading.style.display = 'none';
+      }
     };
-    document.getElementById('cancelPromptBtn').onclick = () => { promptModal.style.display = 'none'; };
+
+    copyCleanupBtn.onclick = async () => {
+      const txt = cleanupOutput.innerText.trim();
+      if (!txt) return;
+      await navigator.clipboard.writeText(txt);
+      copyCleanupBtn.textContent = 'Kopiert!';
+      setTimeout(() => (copyCleanupBtn.textContent = 'Kopieren'), 1500);
+    };
+
+    settingsBtn.onclick = () => {
+      const initial = currentTab === 'cleanup' ? 'cleanup' : promptType;
+      promptModal.style.display = 'block';
+      setPromptOption(initial);
+    };
+
+    promptOptionButtons.forEach(btn => btn.addEventListener('click', () => setPromptOption(btn.dataset.promptOption)));
+
+    document.getElementById('cancelPromptBtn').onclick = () => {
+      promptModal.style.display = 'none';
+    };
+
     document.getElementById('savePromptBtn').onclick = async () => {
       const prompt = promptEditor.value;
-      const r = await fetch('/system_prompt', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ type: promptType, prompt })
+      const r = await fetch(BASE_PATH + '/system_prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: settingsPromptType, prompt })
       });
-      if (r.ok) { promptModal.style.display = 'none'; } else {
-        const err = await r.json().catch(()=>({error:'Fehler'}));
+      if (r.ok) {
+        promptModal.style.display = 'none';
+      } else {
+        const err = await r.json().catch(() => ({ error: 'Fehler' }));
         alert(err.error || 'Fehler beim Speichern.');
       }
     };
+
+    async function setPromptOption(type) {
+      settingsPromptType = type;
+      promptTypeLabel.textContent = promptLabel(type);
+      promptOptionButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.promptOption === type));
+      await loadPrompt(type);
+    }
+
+    async function loadPrompt(type) {
+      try {
+        const r = await fetch(BASE_PATH + '/system_prompt?type=' + type);
+        const data = await r.json();
+        promptEditor.value = data.prompt || '';
+      } catch {
+        promptEditor.value = '';
+      }
+    }
   </script>
 </body>
 </html>
