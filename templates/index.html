@@ -16,7 +16,7 @@
       <div class="tab-bar primary-tabs">
         <button class="tab-btn active" data-tab="leichte">Leichte Sprache</button>
         <button class="tab-btn" data-tab="einfache">Einfache Sprache</button>
-        <button class="tab-btn" data-tab="cleanup">Notizen aufräumen</button>
+        <button class="tab-btn" data-tab="cleanup">Notizen ausformulieren</button>
       </div>
     </header>
 
@@ -78,11 +78,12 @@
       <div class="prompt-option-group">
         <button class="prompt-option active" data-prompt-option="leichte">Leichte Sprache</button>
         <button class="prompt-option" data-prompt-option="einfache">Einfache Sprache</button>
-        <button class="prompt-option" data-prompt-option="cleanup">Notizen aufräumen</button>
+        <button class="prompt-option" data-prompt-option="cleanup">Notizen ausformulieren</button>
       </div>
-      <textarea id="promptEditor" rows="14"></textarea>
+      <p class="helper-text lock-note">System‑Prompts sind aktuell nur zur Ansicht freigegeben. Änderungen folgen später für Admins.</p>
+      <textarea id="promptEditor" rows="14" readonly aria-readonly="true" class="prompt-viewer"></textarea>
       <div class="modal-actions">
-        <button id="savePromptBtn" class="primary">Speichern</button>
+        <button id="savePromptBtn" class="primary" disabled title="Nur Admins dürfen speichern">Speichern</button>
         <button id="cancelPromptBtn" class="secondary">Abbrechen</button>
       </div>
     </div>
@@ -118,6 +119,7 @@
     const outputHeading = document.getElementById('outputHeading');
     const settingsBtn = document.getElementById('settingsBtn');
     const promptOptionButtons = document.querySelectorAll('[data-prompt-option]');
+    const savePromptBtn = document.getElementById('savePromptBtn');
 
     let promptType = 'leichte';
     let currentTab = 'leichte';
@@ -130,7 +132,7 @@
     }
 
     function promptLabel(type) {
-      if (type === 'cleanup') return 'Notizen aufräumen';
+      if (type === 'cleanup') return 'Notizen ausformulieren';
       return labelForMode(type);
     }
 
@@ -291,7 +293,8 @@
       promptModal.style.display = 'none';
     };
 
-    document.getElementById('savePromptBtn').onclick = async () => {
+    savePromptBtn.onclick = async () => {
+      if (savePromptBtn.disabled) return;
       const prompt = promptEditor.value;
       const r = await fetch(BASE_PATH + '/system_prompt', {
         method: 'POST',
